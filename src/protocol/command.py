@@ -16,9 +16,10 @@ class CommandError(Exception):
         """ Convert to string """
         return f"Command {self.code} error: {self.message}"
 
-class Command(Enum):
-    """ Enum of all commands """
+
+class Command:
+    """ Command codes """
     RESET_RAM  = 0x55          # Reset all the ram
     WRITE_RAM = 0x22           # Write in a single emplacement
-    READ_RAM = 0x22            # Read a single emplacement
+    READ_RAM = 0x22            # Read a single emplacement (TODO)
     READ_GROUP_RAM  = 0x66     # Read multiple emplacement
