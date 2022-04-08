@@ -32,7 +32,7 @@ class RS232:
             :param port: Port name (None = Auto)
             :param timeout: timeout in seconds
         """
-        self.timeout = 10
+        self.timeout = timeout
         if port is None:
             self.resolve_com()
         else:
@@ -83,26 +83,29 @@ class RS232:
         """
         timeout_counter = 0
         buffer = []
-        res = []
+        header = [] # The header is 3 bits: CODE OP / LEN 1 / LEN 2
+
         # Receive first 3 bits
-        while len(res) < 3:
+        while len(header) < 3:
             buffer = self.get_response(length)
-            res += buffer
+            header += buffer
             sleep(0.01)
             timeout_counter += 0.01
             if timeout_counter > self.timeout:
-                raise PortError(f"Header timeout: {res}")
-        message_len = res[1]*256 + res[2]
+                raise PortError(f"Header timeout: {header}")
+        message_len = header[1]*256 + header[2]
+        body = header[3:]    # Message body (can be empty)
+        header = header[:3]
         # Receive full message
-        while len(res) < message_len + 3:
+        while len(body) < message_len:
             buffer = self.get_response(length)
-            res += buffer
+            body += buffer
             sleep(0.01)
             timeout_counter += 0.01
             if timeout_counter > self.timeout:
-                raise PortError(f"Body timeout: {res}")
-        print(f"Received: {tuple(res)}")
-        return res
+                raise PortError(f"Body timeout: {body} (Header = {header})")
+        print(f"Received: {header + body}")
+        return header, body
 
 class RAM(RS232):
     """ ATMEGA RAM implementation using RS232 protocol """
@@ -122,8 +125,8 @@ class RAM(RS232):
         if complement:
             p2 = p2 | 2
         self.send_command(Command.RESET_RAM, value, p2)
-        cmd = self.receive_response()
-        if cmd != [Command.RESET_RAM, 0, 0]:
+        header, _ = self.receive_response()
+        if header != [Command.RESET_RAM, 0, 0]:
             raise CommandError(Command.RESET_RAM, "Cannot reset ram")
 
     def read_ram(self, location):
@@ -131,9 +134,10 @@ class RAM(RS232):
         # Split the adress into two bytes
         [adr1, adr2] = list(location.to_bytes(2, 'big'))
         self.send_command(Command.READ_RAM, adr1, adr2)
-        cmd = self.receive_response(3)
-
-        return [self.receive_response(3), self.receive]
+        header, res = self.receive_response()
+        if header != [Command.READ_RAM, 0, 1]:
+            raise CommandError(Command.READ_RAM, "Cannot read ram")
+        return res
  
     def read_group_ram(self, adr_start=0, block_size=64):
         """"
@@ -144,8 +148,16 @@ class RAM(RS232):
         # Split the adress into two bytes
         [adr1, adr2] = list(adr_start.to_bytes(2, 'big'))
         self.send_command(Command.READ_GROUP_RAM, adr1, adr2, block_size)
+        header, res = self.receive_response()
+        if header  != [Command.READ_GROUP_RAM, 0, block_size]:
+            raise CommandError(Command.READ_GROUP_RAM, "Cannot read group ram")
+        return res
 
 if __name__ == "__main__": # Tests
     rs = RAM()
-    rs.reset_ram(0x03)
+    rs.reset_ram(0x69)
+    ram_val = rs.read_ram(10000)
+    print(ram_val)
+    whole_ram = rs.read_group_ram()
+    print(whole_ram)
     rs.close()
