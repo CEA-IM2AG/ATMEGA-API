@@ -2,7 +2,8 @@
     AN IMPLEMENTATION OF THE RAM MEMORY
     :author: Sofiane DJERBI & Aina PEDERSEN
 """
-from time import sleep
+from telnetlib import COM_PORT_OPTION
+from time import sleep, time
 
 from serial import Serial
 from serial.serialutil import SerialException
@@ -41,8 +42,10 @@ class RS232:
             except SerialException as e:
                 print("Connection to {port} failed. Using resolve_com...")
                 self.resolve_com()
+        self.quality_test()
 
     def resolve_com(self):
+        """ Find available serial device """
         for i in range(256):
             try:
                 self.serial = Serial(f"COM{i}", stopbits=2)
@@ -51,9 +54,50 @@ class RS232:
             except SerialException as e:
                 print(f"Connection to COM{i} failed. Trying COM{i+1}...")
         raise PortError("FTDI port not found.")
+    
+    def quality_test(self):
+        """ i2c Quality communication test """
+        cptr = 0
+        for adr_i2c in range(100):
+            self.send_command(Command.QUALITY_TEST, adr_i2c, 0)
+            header, body = self.receive_response()
+            if header != [Command.QUALITY_TEST, 0, 1]:
+                break
+            elif body == [adr_i2c]:
+                cptr += 1
+        if cptr != 100:
+            raise PortError("RS232 connexion failed")
+
+    def change_baudrate(self, baudrate):
+        """
+            Change the baudrate
+            :param baudrate: New baudrate value in decimal
+        """
+        if baudrate == 9600:
+            baudrate_cmd = Command.BAUD_9600
+        elif baudrate == 19200:
+            baudrate_cmd = Command.BAUD_19200
+        elif baudrate == 38400:
+            baudrate_cmd = Command.BAUD_38400
+        elif baudrate == 1000000:
+            baudrate_cmd = Command.BAUD_1000000
+        else:
+            raise CommandError(Command.CHANGE_BAUDRATE, "Bad baudrate value")
+
+        self.send_command(Command.CHANGE_BAUDRATE, 0, baudrate_cmd)
+        sleep(0.1)
+        self.serial.baudrate = baudrate
+        try:
+            head, body = self.receive_response()
+        except PortError as e:
+            raise CommandError(Command.CHANGE_BAUDRATE, "Timeout while changing baudrate")
+        if head != [0xFF, 0, 1] or body != [0xAA]:
+            raise CommandError(Command.CHANGE_BAUDRATE, "Error while changing baudrate")
 
     def close(self):
         """ Close the USB connection """
+        if self.serial.baudrate != 9600:
+            self.change_baudrate(9600)
         self.serial.close()
     
     def send_command(self, *args):
@@ -112,6 +156,7 @@ class RAM(RS232):
     def __init__(self):
         """ Initialize the object """
         super().__init__()
+        self.ram_size = 2**14
     
     def reset_ram(self, value=0x00, increment=False, complement=False):
         """
@@ -153,11 +198,30 @@ class RAM(RS232):
             raise CommandError(Command.READ_GROUP_RAM, "Cannot read group ram")
         return res
 
+    def dump_ram(self, reserve_stack=0):
+        """
+            Read the whole ram
+            :param reserve_stack: number of bytes to skip at the end of the ram
+        """
+        adr_ram = 0
+        block_size = 128
+        res = []
+        while (adr_ram < self.ram_size - reserve_stack):
+            res += self.read_group_ram(adr_ram, block_size)
+            adr_ram += block_size
+        return res
+
+
 if __name__ == "__main__": # Tests
     rs = RAM()
     rs.reset_ram(0x69)
     ram_val = rs.read_ram(10000)
     print(ram_val)
-    whole_ram = rs.read_group_ram()
-    print(whole_ram)
+    group_ram = rs.read_group_ram()
+    print(group_ram)
+    rs.change_baudrate(1000000)
+    t1 = time()
+    whole_ram = rs.dump_ram()
+    t2 = time()
+    print(f'dump: {whole_ram} in {t2 - t1} second(s)')
     rs.close()
