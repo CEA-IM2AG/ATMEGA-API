@@ -7,7 +7,7 @@ from enum import Enum
 
 class CommandError(Exception):
     """ Any error related to hardware ports """
-    def __init__(self, code, message="Unknown Port Error"):
+    def __init__(self, code, message="Unknown Command Error"):
         """ Init the error message """
         self.message = message
         self.code = hex(code)
