@@ -2,7 +2,8 @@
     AN IMPLEMENTATION OF THE RAM MEMORY
     :author: Sofiane DJERBI & Aina PEDERSEN
 """
-from telnetlib import COM_PORT_OPTION
+import logging
+
 from time import sleep, time
 
 from serial import Serial
@@ -11,6 +12,8 @@ from serial.serialutil import SerialException
 from command import Command
 from command import CommandError
 
+
+log = logging.getLogger("ATMEGA RAM")
 
 class PortError(Exception):
     """ Any error related to hardware ports """
@@ -21,7 +24,6 @@ class PortError(Exception):
     def __str__(self):
         """ Convert to string """
         return self.message
-
 
 
 class RS232:
@@ -40,7 +42,7 @@ class RS232:
             try:
                 self.serial = Serial(port, stopbits=2)
             except SerialException as e:
-                print("Connection to {port} failed. Using resolve_com...")
+                log.warning("Connection to {port} failed. Using resolve_com...")
                 self.resolve_com()
         self.quality_test()
 
@@ -49,23 +51,24 @@ class RS232:
         for i in range(256):
             try:
                 self.serial = Serial(f"COM{i}", stopbits=2)
-                print(f"Successfully connected to COM{i}")
+                log.info(f"Successfully connected to COM{i}")
                 return
             except SerialException as e:
-                print(f"Connection to COM{i} failed. Trying COM{i+1}...")
+                log.debug(f"Connection to COM{i} failed. Trying COM{i+1}...")
         raise PortError("FTDI port not found.")
     
     def quality_test(self):
         """ i2c Quality communication test """
-        cptr = 0
+        log.debug("Performing quality test...")
+        counter = 0
         for adr_i2c in range(100):
             self.send_command(Command.QUALITY_TEST, adr_i2c, 0)
             header, body = self.receive_response()
             if header != [Command.QUALITY_TEST, 0, 1]:
                 break
             elif body == [adr_i2c]:
-                cptr += 1
-        if cptr != 100:
+                counter += 1
+        if counter != 100:
             raise PortError("RS232 connexion failed")
 
     def change_baudrate(self, baudrate):
@@ -73,6 +76,7 @@ class RS232:
             Change the baudrate
             :param baudrate: New baudrate value in decimal (9600/19200/38400/1000000)
         """
+        log.info(f"Changing baudrate to {baudrate}...")
         if baudrate == 9600:
             baudrate_cmd = Command.BAUD_9600
         elif baudrate == 19200:
@@ -83,9 +87,8 @@ class RS232:
             baudrate_cmd = Command.BAUD_1000000
         else:
             raise CommandError(Command.CHANGE_BAUDRATE, "Invalid baudrate value")
-
         self.send_command(Command.CHANGE_BAUDRATE, 0, baudrate_cmd)
-        sleep(0.1)
+        sleep(0.1) # Sleep to sync with device
         self.serial.baudrate = baudrate
         try:
             head, body = self.receive_response()
@@ -103,7 +106,7 @@ class RS232:
     def send_command(self, *args):
         """ Send a command using RS232 protocol """
         self.serial.write(bytearray(args))
-        print(f"Sended {args}")
+        log.debug(f"Sended {args}")
 
     def get_response(self, length=None):
         """ 
@@ -148,8 +151,9 @@ class RS232:
             timeout_counter += 0.01
             if timeout_counter > self.timeout:
                 raise PortError(f"Body timeout: {body} (Header = {header})")
-        print(f"Received: {header + body}")
+        log.debug(f"Received: {header + body}")
         return header, body
+
 
 class RAM(RS232):
     """ ATMEGA RAM implementation using RS232 protocol """
@@ -169,6 +173,7 @@ class RAM(RS232):
             p2 = 1
         if complement:
             p2 = p2 | 2
+        log.info("Resetting ram...")
         self.send_command(Command.RESET_RAM, value, p2)
         header, _ = self.receive_response()
         if header != [Command.RESET_RAM, 0, 0]:
@@ -206,22 +211,33 @@ class RAM(RS232):
         adr_ram = 0
         block_size = 128
         res = []
+        log.info("Dumping ram...")
+        t = time()
         while (adr_ram < self.ram_size - reserve_stack):
             res += self.read_group_ram(adr_ram, block_size)
             adr_ram += block_size
+        log.info(f"Ram dumped in {time() - t} seconds")
         return res
 
+    def dump_ram_to_file(self, file, reserve_stack=0):
+        """
+            Read the whole ram and save it in a file
+            :param reserve_stack: number of bytes to skip at the end of the ram
+        """
+        data = self.dump_ram(reserve_stack)
+        f = open(file, "w+")
+        for i in range(len(data)):
+            f.write("{:04x}:".format(i))
+            f.write("{:02x}\n".format(data[i]))
+        f.close()
+            
 
 if __name__ == "__main__": # Tests
+    logging.basicConfig(level=logging.DEBUG)
     rs = RAM()
     rs.reset_ram(0x69)
     ram_val = rs.read_ram(10000)
-    print(ram_val)
     group_ram = rs.read_group_ram()
-    print(group_ram)
     rs.change_baudrate(1000000)
-    t1 = time()
     whole_ram = rs.dump_ram()
-    t2 = time()
-    print(f'dump: {whole_ram} in {t2 - t1} second(s)')
     rs.close()
