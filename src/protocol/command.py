@@ -19,7 +19,8 @@ class CommandError(Exception):
 
 class Command:
     """ Command codes """
-    RESET_RAM  = 0x55          # Reset all the ram
-    WRITE_RAM = 0x22           # Write in a single emplacement
-    READ_RAM = 0x22            # Read a single emplacement (TODO)
-    READ_GROUP_RAM  = 0x66     # Read multiple emplacement
+    RESET_RAM         = 0x55           # Reset all the ram
+    WRITE_RAM         = 0x33           # Write in a single emplacement
+    READ_RAM          = 0x22           # Read a single emplacement (TODO)
+    READ_GROUP_RAM    = 0x66           # Read multiple emplace
+    CHANGE_BAUDRATE   = 0xFF           # Change the value of the baudrate (TODO)
