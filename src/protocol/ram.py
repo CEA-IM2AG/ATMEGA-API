@@ -65,7 +65,7 @@ class RS232:
         """ 
             Receive a command using RS232 protocol
 
-            :param: length of the data (None = auto)
+            :param length: length of the data (None = auto)
             :return: the response (int array)
         """
         if length is None:
@@ -78,7 +78,7 @@ class RS232:
         """ 
             Wait for a response using RS232 protocol
 
-            :param: length of the data (None = auto)
+            :param length: length of the data (None = auto)
             :return: the response (int array)
         """
         timeout_counter = 0
