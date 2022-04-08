@@ -8,6 +8,5 @@ setup(
     author="Sofiane DJERBI, Ny Aina PEDERSEN, Aymes FREZJA, Nour LADHARI, Yanis ACHAICHIA, Amine OTMANE",
     author_email="sofiane.djerbi@etu.univ-grenoble-alpes.fr",
     packages=["atmega"],
-    package_dir={"": "src"},
     install_requires=["pyserial"]
 )

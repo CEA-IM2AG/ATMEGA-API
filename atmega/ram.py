@@ -12,6 +12,8 @@ from serial.serialutil import SerialException
 from command import Command
 from command import CommandError
 
+from sys import platform
+
 
 log = logging.getLogger("ATMEGA RAM")
 
@@ -48,13 +50,19 @@ class RS232:
 
     def resolve_com(self):
         """ Find available serial device """
+        if platform == "win32":
+            device = "COM"
+        elif "linux" in platform:
+            device = "/dev/ttyUSB"
+        else:
+            raise Exception("Operating system not supported. Cannot find device.")
         for i in range(256):
             try:
-                self.serial = Serial(f"COM{i}", stopbits=2)
-                log.info(f"Successfully connected to COM{i}")
+                self.serial = Serial(f"{device}{i}", stopbits=2)
+                log.info(f"Successfully connected to {device}{i}")
                 return
             except SerialException as e:
-                log.debug(f"Connection to COM{i} failed. Trying COM{i+1}...")
+                log.debug(f"Connection to {device}{i} failed. Trying {device}{i+1}...")
         raise PortError("FTDI port not found.")
     
     def quality_test(self):
@@ -233,11 +241,11 @@ class RAM(RS232):
             
 
 if __name__ == "__main__": # Tests
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     rs = RAM()
     rs.reset_ram(0x69)
     ram_val = rs.read_ram(10000)
-    group_ram = rs.read_group_ram()
+    rs.dump_ram_to_file("dump.txt")
     rs.change_baudrate(1000000)
     whole_ram = rs.dump_ram()
     rs.close()
