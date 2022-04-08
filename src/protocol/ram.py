@@ -71,7 +71,7 @@ class RS232:
     def change_baudrate(self, baudrate):
         """
             Change the baudrate
-            :param baudrate: New baudrate value in decimal
+            :param baudrate: New baudrate value in decimal (9600/19200/38400/1000000)
         """
         if baudrate == 9600:
             baudrate_cmd = Command.BAUD_9600
@@ -82,7 +82,7 @@ class RS232:
         elif baudrate == 1000000:
             baudrate_cmd = Command.BAUD_1000000
         else:
-            raise CommandError(Command.CHANGE_BAUDRATE, "Bad baudrate value")
+            raise CommandError(Command.CHANGE_BAUDRATE, "Invalid baudrate value")
 
         self.send_command(Command.CHANGE_BAUDRATE, 0, baudrate_cmd)
         sleep(0.1)
