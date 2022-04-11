@@ -20,6 +20,9 @@ logging.basicConfig(level=logging.INFO)
 # Create device ram object
 dev = RAM()
 
+# Reset ram to 0x11
+dev.reset_ram(0x11)
+
 # Set high baudrate
 dev.change_baudrate(1000000)
 
