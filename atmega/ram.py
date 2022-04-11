@@ -1,6 +1,6 @@
 """ 
     AN IMPLEMENTATION OF THE RAM MEMORY
-    :author: Sofiane DJERBI & Aina PEDERSEN
+    :author: Sofiane DJERBI, Aina PEDERSEN, Nour LADHARI, Aymes FEJZA
 """
 import logging
 
@@ -103,7 +103,7 @@ class RS232:
     def close(self):
         """ Close the USB connection """
         if self.serial.baudrate != 9600:
-            self.change_baudrate(9600)
+            self.change_baudrate(9600) # reset to initial state
         self.serial.close()
     
     def send_command(self, *args):
@@ -182,16 +182,28 @@ class RAM(RS232):
         if header != [Command.RESET_RAM, 0, 0]:
             raise CommandError(Command.RESET_RAM, "Cannot reset ram")
 
+    def write(self, value, location):
+        """ Write value at emplacement location """
+        if location >= self.ram_size:
+            raise CommandError(Command.WRITE_RAM, "Inacessible location")
+        [adr1, adr2] = list(location.to_bytes(2, 'big'))
+        self.send_command(Command.WRITE_RAM, adr1, adr2, value)
+        header, res = self.receive_response()
+        if header != [Command.WRITE_RAM, 0, 0]:
+            raise CommandError(Command.WRITE_RAM, "Cannot write to single address")
+
     def read(self, location):
         """ Read ram at emplacement location """
+        if location >= self.ram_size:
+            raise CommandError(Command.READ_RAM, "Inacessible location")
         # Split the adress into two bytes
         [adr1, adr2] = list(location.to_bytes(2, 'big'))
         self.send_command(Command.READ_RAM, adr1, adr2)
         header, res = self.receive_response()
         if header != [Command.READ_RAM, 0, 1]:
             raise CommandError(Command.READ_RAM, "Cannot read ram")
-        return res
- 
+        return res[0]
+
     def read_group(self, adr_start=0, block_size=64):
         """"
             Read a block in the ram
@@ -217,7 +229,7 @@ class RAM(RS232):
         log.info("Dumping ram...")
         t = time()
         while (adr_ram < self.ram_size - reserve_stack):
-            res += self.read_group_ram(adr_ram, block_size)
+            res += self.read_group(adr_ram, block_size)
             adr_ram += block_size
         log.info(f"Ram dumped in {time() - t} seconds")
         return res
@@ -227,7 +239,7 @@ class RAM(RS232):
             Read the whole ram and save it in a file
             :param reserve_stack: number of bytes to skip at the end of the ram
         """
-        data = self.dump_ram(reserve_stack)
+        data = self.dump(reserve_stack)
         f = open(file, "w+")
         for i in range(len(data)):
             f.write("{:04x}:".format(i))
@@ -238,9 +250,10 @@ class RAM(RS232):
 if __name__ == "__main__": # Tests
     logging.basicConfig(level=logging.INFO)
     rs = RAM()
-    rs.reset(0x10)
-    ram_val = rs.read(10000)
-    rs.dump_to_file("dump.txt")
     rs.change_baudrate(1000000)
-    whole_ram = rs.dump()
+    rs.reset(0x10)
+    rs.write(0x52, 0x34F2)
+    for i in range(10):
+        x = rs.read(0x34F0 + i)
+        print(x) 
     rs.close()
