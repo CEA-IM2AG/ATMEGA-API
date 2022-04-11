@@ -1,12 +1,12 @@
 # ATMEGA API
-Provides an API for ATMEGA microcontroller through FTDI USB device.
+Provides an API for ATMEGA microcontroller through an FTDI USB device.
 
 # Installation
 
 ## Requirements
-Install dependencies with pip: `pip install -r requirements.txt`
-Install the library with pip: `pip install .`
-On linux the user should be in the group `dialout`
+Install dependencies with pip: `pip install -r requirements.txt`  
+Install the library with pip: `pip install .`  
+**Note:** On linux the user should be in the group `dialout`
 
 # Usage
 
