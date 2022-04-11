@@ -184,18 +184,15 @@ class RAM(RS232):
 
     def write(self, value, location):
         """ Write value at emplacement location """
-        if location >= self.ram_size:
-            raise CommandError(Command.WRITE_RAM, "Inacessible location")
         [adr1, adr2] = list(location.to_bytes(2, 'big'))
         self.send_command(Command.WRITE_RAM, adr1, adr2, value)
         header, res = self.receive_response()
         if header != [Command.WRITE_RAM, 0, 0]:
             raise CommandError(Command.WRITE_RAM, "Cannot write to single address")
+        return res
 
     def read(self, location):
         """ Read ram at emplacement location """
-        if location >= self.ram_size:
-            raise CommandError(Command.READ_RAM, "Inacessible location")
         # Split the adress into two bytes
         [adr1, adr2] = list(location.to_bytes(2, 'big'))
         self.send_command(Command.READ_RAM, adr1, adr2)
