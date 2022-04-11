@@ -11,7 +11,10 @@ On linux the user should be in the group `dialout`
 # Usage
 
 ```python
-import atmega
+from atmega.ram import RAM
 
 logging.basicConfig(level=logging.INFO) # Set global logging level
+
+# Create device ram object
+dev = RAM()
 ```
