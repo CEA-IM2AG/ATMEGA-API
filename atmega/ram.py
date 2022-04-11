@@ -9,8 +9,8 @@ from time import sleep, time
 from serial import Serial
 from serial.serialutil import SerialException
 
-from command import Command
-from command import CommandError
+from atmega.command import Command
+from atmega.command import CommandError
 
 from sys import platform
 
@@ -102,7 +102,7 @@ class RS232:
             head, body = self.receive_response()
         except PortError as e:
             raise CommandError(Command.CHANGE_BAUDRATE, "Timeout while changing baudrate")
-        if head != [0xFF, 0, 1] or body != [0xAA]:
+        if head != [Command.CHANGE_BAUDRATE, 0, 1] or body != [0xAA]:
             raise CommandError(Command.CHANGE_BAUDRATE, "Error while changing baudrate")
 
     def close(self):

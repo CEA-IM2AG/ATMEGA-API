@@ -2,8 +2,6 @@
     ALL ATMEGA RAM COMMANDS
     :author: Sofiane DJERBI & Aina PEDERSEN
 """
-from enum import Enum
-
 
 class CommandError(Exception):
     """ Any error related to hardware ports """
