@@ -2,12 +2,15 @@
     Unit tests
     :author: Sofiane DJERBI
 """
+import logging
+
 import unittest
 from unittest import TestCase
 from atmega.ram import RAM
 
 class TestRAM(TestCase):
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        super(TestRAM, self).__init__(*args, **kwargs)
         self.dev = RAM()
 
     def test_reset(self):
@@ -19,4 +22,5 @@ class TestRAM(TestCase):
         pass
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     unittest.main()
