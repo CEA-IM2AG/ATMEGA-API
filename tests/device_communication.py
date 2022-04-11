@@ -3,7 +3,6 @@
     :author: Sofiane DJERBI
 """
 import logging
-
 import unittest
 from unittest import TestCase
 from atmega.ram import RAM
