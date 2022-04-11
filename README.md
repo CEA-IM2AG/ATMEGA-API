@@ -22,13 +22,13 @@ logging.basicConfig(level=logging.INFO)
 dev = RAM()
 
 # Reset ram to 0x11
-dev.reset_ram(0x11)
+dev.reset(0x11)
 
 # Set high baudrate
 dev.change_baudrate(1000000)
 
 # Dump ram into file
-dev.dump_ram_to_file("dump.txt")
+dev.dump_to_file("dump.txt")
 
 # Close device
 dev.close()

@@ -165,7 +165,7 @@ class RAM(RS232):
         super().__init__(port, timeout)
         self.ram_size = 2**14
     
-    def reset_ram(self, value=0x00, increment=False, complement=False):
+    def reset(self, value=0x00, increment=False, complement=False):
         """
             Set all ram values to value
             :param increment: bool that tells if the ram will be incremented by the value
@@ -182,7 +182,7 @@ class RAM(RS232):
         if header != [Command.RESET_RAM, 0, 0]:
             raise CommandError(Command.RESET_RAM, "Cannot reset ram")
 
-    def read_ram(self, location):
+    def read(self, location):
         """ Read ram at emplacement location """
         # Split the adress into two bytes
         [adr1, adr2] = list(location.to_bytes(2, 'big'))
@@ -192,7 +192,7 @@ class RAM(RS232):
             raise CommandError(Command.READ_RAM, "Cannot read ram")
         return res
  
-    def read_group_ram(self, adr_start=0, block_size=64):
+    def read_group(self, adr_start=0, block_size=64):
         """"
             Read a block in the ram
             :param adr_start: adress of the beginning of the block
@@ -206,7 +206,7 @@ class RAM(RS232):
             raise CommandError(Command.READ_GROUP_RAM, "Cannot read group ram")
         return res
 
-    def dump_ram(self, reserve_stack=0):
+    def dump(self, reserve_stack=0):
         """
             Read the whole ram
             :param reserve_stack: number of bytes to skip at the end of the ram
@@ -222,7 +222,7 @@ class RAM(RS232):
         log.info(f"Ram dumped in {time() - t} seconds")
         return res
 
-    def dump_ram_to_file(self, file, reserve_stack=0):
+    def dump_to_file(self, file, reserve_stack=0):
         """
             Read the whole ram and save it in a file
             :param reserve_stack: number of bytes to skip at the end of the ram
@@ -238,9 +238,9 @@ class RAM(RS232):
 if __name__ == "__main__": # Tests
     logging.basicConfig(level=logging.INFO)
     rs = RAM()
-    rs.reset_ram(0x69)
-    ram_val = rs.read_ram(10000)
-    rs.dump_ram_to_file("dump.txt")
+    rs.reset(0x10)
+    ram_val = rs.read(10000)
+    rs.dump_to_file("dump.txt")
     rs.change_baudrate(1000000)
-    whole_ram = rs.dump_ram()
+    whole_ram = rs.dump()
     rs.close()

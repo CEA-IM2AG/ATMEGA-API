@@ -1,6 +1,6 @@
 """ 
     ALL ATMEGA RAM COMMANDS
-    :author: Sofiane DJERBI & Aina PEDERSEN
+    :author: Sofiane DJERBI, Aina PEDERSEN, Nour LADHARI, Aymes FEJZA
 """
 
 class CommandError(Exception):
