@@ -68,16 +68,11 @@ class RS232:
     def quality_test(self):
         """ i2c Quality communication test """
         log.debug("Performing quality test...")
-        counter = 0
         for adr_i2c in range(100):
             self.send_command(Command.QUALITY_TEST, adr_i2c, 0)
             header, body = self.receive_response()
-            if header != [Command.QUALITY_TEST, 0, 1]:
-                break
-            elif body == [adr_i2c]:
-                counter += 1
-        if counter != 100:
-            raise PortError("RS232 connexion failed")
+            if header != [Command.QUALITY_TEST, 0, 1] or body != [adr_i2c]:
+                raise PortError("RS232 connexion failed")
 
     def change_baudrate(self, baudrate):
         """
@@ -165,9 +160,9 @@ class RS232:
 
 class RAM(RS232):
     """ ATMEGA RAM implementation using RS232 protocol """
-    def __init__(self):
+    def __init__(self, port=None, timeout=5):
         """ Initialize the object """
-        super().__init__()
+        super().__init__(port, timeout)
         self.ram_size = 2**14
     
     def reset_ram(self, value=0x00, increment=False, complement=False):
