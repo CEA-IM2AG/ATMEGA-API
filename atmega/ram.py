@@ -44,7 +44,7 @@ class RS232:
         else:
             try:
                 self.serial = Serial(port, stopbits=2)
-            except SerialException as e:
+            except SerialException as _:
                 log.warning("Connection to {port} failed. Using resolve_com...")
                 self.resolve_com()
         if quality_test:
@@ -79,6 +79,7 @@ class RS232:
     def change_baudrate(self, baudrate):
         """
             Change the baudrate
+
             :param baudrate: New baudrate value in decimal (9600/19200/38400/1000000)
         """
         log.info(f"Changing baudrate to {baudrate}...")
@@ -134,29 +135,26 @@ class RS232:
             :return: the response (int array)
         """
         timeout_counter = 0
-        buffer = []
-        header = [] # The header is 3 bits: CODE OP / LEN 1 / LEN 2
-
-        # Receive first 3 bits
-        while len(header) < 3:
-            buffer = self.get_response(length)
-            header += buffer
+        # The header is 3 bits: CODE OP / LEN 1 / LEN 2
+        while self.serial.in_waiting < 3: # Header
             sleep(0.01)
             timeout_counter += 0.01
             if timeout_counter > self.timeout:
-                raise PortError(f"Header timeout: {header}")
+                raise PortError(
+                    f"Header timeout: {self.get_response()}"
+                )
+        header = self.get_response(3)
         message_len = header[1]*256 + header[2]
-        body = header[3:]    # Message body (can be empty)
-        header = header[:3]
         # Receive full message
-        while len(body) < message_len:
-            buffer = self.get_response(length)
-            body += buffer
+        while self.serial.in_waiting < message_len: # Body
             sleep(0.01)
             timeout_counter += 0.01
             if timeout_counter > self.timeout:
-                raise PortError(f"Body timeout: {body} (Header = {header})")
-        log.debug(f"Received: {header + body}")
+                raise PortError(
+                    f"Body timeout: {self.get_response()} (Header = {header})"
+                )
+        body = self.get_response()
+        log.debug(f"Received: [{header}] {body}")
         return header, body
 
 
@@ -179,6 +177,7 @@ class RAM(RS232):
         """
             Set all ram values to value
 
+            :param value: value that will be set (int)
             :param increment: bool that tells if the ram will be incremented by the value
             :param completment: bool that tells if the ram will be complemented
         """
@@ -224,6 +223,7 @@ class RAM(RS232):
     def read_group(self, adr_start=0, block_size=64):
         """"
             Read a block in the ram
+
             :param adr_start: adress of the beginning of the block
             :param block_size: size of the wanted block
         """
@@ -238,6 +238,7 @@ class RAM(RS232):
     def dump(self, reserve_stack=0):
         """
             Read the whole ram
+
             :param reserve_stack: number of bytes to skip at the end of the ram
         """
         adr_ram = 0
@@ -254,6 +255,7 @@ class RAM(RS232):
     def dump_to_file(self, file, reserve_stack=0):
         """
             Read the whole ram and save it in a file
+            
             :param file: dump file to create/overwrite
             :param reserve_stack: number of bytes to skip at the end of the ram
         """
