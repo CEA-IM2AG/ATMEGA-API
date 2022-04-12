@@ -13,10 +13,10 @@ class TestRAM(TestCase):
         self.dev = RAM()
 
     def test_reset(self):
-        self.dev.reset_ram(0xF0)
-        mem = self.dev.read_group_ram(0x1000, 100)
-        self.assertEqual(mem, [0xF0 for i in range(100)])
-    
+        self.dev.reset(0xF0)
+        mem = self.dev.read_group(0x1000, 100)
+        self.assertEqual(mem, [0xF0]*100)
+
     def test_write(self):
         pass
 
