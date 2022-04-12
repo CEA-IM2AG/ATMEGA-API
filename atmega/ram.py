@@ -17,6 +17,30 @@ from sys import platform
 
 log = logging.getLogger("ATMEGA RAM")
 
+
+def list_devices():
+    """ 
+        Find available serial devices 
+
+        :return: a list of available serial devices names
+    """
+    if platform == "win32":
+        prefix = "COM"
+    elif "linux" in platform:
+        prefix = "/dev/ttyUSB"
+    else:
+        raise Exception("Operating system not supported. Cannot find device.")
+    device = []
+    for i in range(256):
+        try:
+            serial = Serial(f"{prefix}{i}", stopbits=2)
+            log.info(f"Successfully connected to {prefix}{i}")
+            device.append(f"{prefix}{i}")
+        except SerialException as e:
+            log.debug(f"Connection to {prefix}{i} failed. Trying {prefix}{i+1}...")
+    return device
+
+
 class PortError(Exception):
     """ Any error related to hardware ports """
     def __init__(self, message="Unknown Port Error"):
@@ -51,21 +75,11 @@ class RS232:
             self.quality_test()
 
     def resolve_com(self):
-        """ Find available serial device """
-        if platform == "win32":
-            device = "COM"
-        elif "linux" in platform:
-            device = "/dev/ttyUSB"
-        else:
-            raise Exception("Operating system not supported. Cannot find device.")
-        for i in range(256):
-            try:
-                self.serial = Serial(f"{device}{i}", stopbits=2)
-                log.info(f"Successfully connected to {device}{i}")
-                return
-            except SerialException as e:
-                log.debug(f"Connection to {device}{i} failed. Trying {device}{i+1}...")
-        raise PortError("FTDI port not found.")
+        """ Take the first USB device as serial """
+        device = list_devices()
+        if device == []:
+            raise PortError("FTDI port not found.")
+        self.serial = Serial(device[0], stopbits=2)
     
     def quality_test(self):
         """ i2c Quality communication test """
@@ -255,7 +269,7 @@ class RAM(RS232):
     def dump_to_file(self, file, reserve_stack=0):
         """
             Read the whole ram and save it in a file
-            
+
             :param file: dump file to create/overwrite
             :param reserve_stack: number of bytes to skip at the end of the ram
         """
