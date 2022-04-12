@@ -30,12 +30,13 @@ class PortError(Exception):
 
 class RS232:
     """ RS232 protocol object """
-    def __init__(self, port=None, timeout=5):
+    def __init__(self, port=None, timeout=5, quality_test=False):
         """
             Initialize the interface.
             
-            :param port: Port name (None = Auto)
+            :param port: port name (None = Auto)
             :param timeout: timeout in seconds
+            :param quality_test: do a quality test ?
         """
         self.timeout = timeout
         if port is None:
@@ -46,7 +47,8 @@ class RS232:
             except SerialException as e:
                 log.warning("Connection to {port} failed. Using resolve_com...")
                 self.resolve_com()
-        self.quality_test()
+        if quality_test:
+            self.quality_test()
 
     def resolve_com(self):
         """ Find available serial device """
@@ -160,14 +162,23 @@ class RS232:
 
 class RAM(RS232):
     """ ATMEGA RAM implementation using RS232 protocol """
-    def __init__(self, port=None, timeout=5):
-        """ Initialize the object """
-        super().__init__(port, timeout)
-        self.ram_size = 2**14
+    def __init__(self, port=None, timeout=5, quality_test=False, 
+                 ram_size=2**14):
+        """ 
+            Initialize the RS232 object
+
+            :param port: RS232 FTDI port
+            :param timeout: communication timeout in seconds
+            :param quality_test: do a quality test ?
+            :param ram_size: size of the ram
+        """
+        super().__init__(port, timeout, quality_test)
+        self.ram_size = ram_size
     
     def reset(self, value=0x00, increment=False, complement=False):
         """
             Set all ram values to value
+
             :param increment: bool that tells if the ram will be incremented by the value
             :param completment: bool that tells if the ram will be complemented
         """
@@ -183,7 +194,12 @@ class RAM(RS232):
             raise CommandError(Command.RESET_RAM, "Cannot reset ram")
 
     def write(self, value, location):
-        """ Write value at emplacement location """
+        """ 
+            Write value at emplacement location 
+
+            :param value: value to write
+            :param location: location to write
+        """
         [adr1, adr2] = list(location.to_bytes(2, 'big'))
         self.send_command(Command.WRITE_RAM, adr1, adr2, value)
         header, res = self.receive_response()
@@ -192,7 +208,11 @@ class RAM(RS232):
         return res
 
     def read(self, location):
-        """ Read ram at emplacement location """
+        """ 
+            Read ram at a single location
+
+            :param location: location to read
+        """
         # Split the adress into two bytes
         [adr1, adr2] = list(location.to_bytes(2, 'big'))
         self.send_command(Command.READ_RAM, adr1, adr2)
@@ -234,6 +254,7 @@ class RAM(RS232):
     def dump_to_file(self, file, reserve_stack=0):
         """
             Read the whole ram and save it in a file
+            :param file: dump file to create/overwrite
             :param reserve_stack: number of bytes to skip at the end of the ram
         """
         data = self.dump(reserve_stack)
