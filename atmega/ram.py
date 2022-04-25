@@ -24,15 +24,18 @@ def list_devices():
 
         :return: a list of available serial devices names
     """
-    if platform == "win32":
+    """
+        Liste tout les USB branchés sur l'ordinateur.
+    """
+    if platform == "win32": # Cas windows
         prefix = "COM"
-    elif "linux" in platform:
+    elif "linux" in platform: # Cas linux
         prefix = "/dev/ttyUSB"
-    else:
+    else: # OS inconnu
         raise Exception("Operating system not supported. Cannot find device.")
     device = []
-    for i in range(256):
-        try:
+    for i in range(256): # On teste tous les ports
+        try: # On a trouvé un device
             serial = Serial(f"{prefix}{i}", stopbits=2)
             log.info(f"Successfully connected to {prefix}{i}")
             device.append(f"{prefix}{i}")
@@ -63,28 +66,29 @@ class RS232:
             :param quality_test: do a quality test ?
         """
         self.timeout = timeout
-        if port is None:
+        if port is None: # Si aucun port est donné on cherche automatiquement
             self.resolve_com()
         else:
-            try:
+            try: # Sinon on essaie le port fourni
                 self.serial = Serial(port, stopbits=2)
             except SerialException as _:
                 log.warning("Connection to {port} failed. Using resolve_com...")
                 self.resolve_com()
-        if quality_test:
+        if quality_test: # Si besoin on fait un test de qualité
             self.quality_test()
 
     def resolve_com(self):
         """ Take the first USB device as serial """
+        """ Utilise le premier port usb reconnu en tant que périphérique """
         device = list_devices()
-        if device == []:
+        if device == []: # Si on a rien trouvé
             raise PortError("FTDI port not found.")
         self.serial = Serial(device[0], stopbits=2)
 
     def quality_test(self):
         """ i2c Quality communication test """
         log.debug("Performing quality test...")
-        for adr_i2c in range(100):
+        for adr_i2c in range(100): # On effectue le test de qualité i2c
             self.send_command(Command.QUALITY_TEST, adr_i2c, 0)
             header, body = self.receive_response()
             if header != [Command.QUALITY_TEST, 0, 1] or body != [adr_i2c]:
@@ -96,6 +100,7 @@ class RS232:
 
             :param baudrate: New baudrate value in decimal (9600/19200/38400/1000000)
         """
+        """ Change la vitesse de communication avec le device """
         log.info(f"Changing baudrate to {baudrate}...")
         if baudrate == 9600:
             baudrate_cmd = Command.BAUD_9600
@@ -108,7 +113,7 @@ class RS232:
         else:
             raise CommandError(Command.CHANGE_BAUDRATE, "Invalid baudrate value")
         self.send_command(Command.CHANGE_BAUDRATE, 0, baudrate_cmd)
-        sleep(0.1) # Sleep to sync with device
+        sleep(0.1) # On attend un peu que le device ce soit synchronisé
         self.serial.baudrate = baudrate
         try:
             head, body = self.receive_response()
@@ -119,7 +124,7 @@ class RS232:
 
     def close(self):
         """ Close the USB connection """
-        if self.serial.baudrate != 9600:
+        if self.serial.baudrate != 9600: # On remet le baudrate à 9600 pour éviter les erreurs
             self.change_baudrate(9600) # reset to initial state
         self.serial.close()
 
@@ -135,9 +140,9 @@ class RS232:
             :param length: length of the data (None = auto)
             :return: the response (int array)
         """
-        if length is None:
+        if length is None: # Si aucune taille est spécifiée
             res = self.serial.read(self.serial.in_waiting)
-        else:
+        else: # Sinon
             res = self.serial.read(length)
         return list(res)
 
@@ -148,26 +153,22 @@ class RS232:
             :param length: length of the data (None = auto)
             :return: the response (int array)
         """
-        timeout_counter = 0
+        timeout_counter = 0 # Compteur de secondes avant un timeout
         # The header is 3 bits: CODE OP / LEN 1 / LEN 2
-        while self.serial.in_waiting < 3: # Header
-            sleep(0.01)
+        while self.serial.in_waiting < 3: # On attend le header
+            sleep(0.01) # Le temps de recevoir les commandes
             timeout_counter += 0.01
             if timeout_counter > self.timeout:
-                raise PortError(
-                    f"Header timeout: {self.get_response()}"
-                )
-        header = self.get_response(3)
+                raise PortError(f"Header timeout: {self.get_response()}")
+        header = self.get_response(3) # Header = 3 premiers bits décrivant le message
         message_len = header[1]*256 + header[2]
         # Receive full message
-        while self.serial.in_waiting < message_len: # Body
+        while self.serial.in_waiting < message_len: # On attend le body
             sleep(0.01)
             timeout_counter += 0.01
             if timeout_counter > self.timeout:
-                raise PortError(
-                    f"Body timeout: {self.get_response()} (Header = {header})"
-                )
-        body = self.get_response()
+                raise PortError(f"Body timeout: {self.get_response()} (Header = {header})")
+        body = self.get_response() # Body = contenu du message
         log.debug(f"Received: [{header}] {body}")
         return header, body
 
@@ -185,7 +186,7 @@ class RAM(RS232):
             :param ram_size: size of the ram
         """
         super().__init__(port, timeout, quality_test)
-        self.ram_size = ram_size
+        self.ram_size = ram_size # Support atmega différente ram
 
     def reset(self, value=0x00, increment=False, complement=False):
         """
@@ -195,15 +196,16 @@ class RAM(RS232):
             :param increment: bool that tells if the ram will be incremented by the value
             :param completment: bool that tells if the ram will be complemented
         """
-        p2 = 0
-        if increment:
-            p2 = 1
-        if complement:
-            p2 = p2 | 2
+        """ Reset/complémente/incrémente la ram avec "value" """
+        p = 0 # Nature de la commande
+        if increment: # Si on incrémente au lieu de reset, p = 1
+            p = 1
+        if complement: # Si on complémente au lieu de reset, p = p | 2 (complémente)
+            p = p | 2
         log.info("Resetting ram...")
-        self.send_command(Command.RESET_RAM, value, p2)
+        self.send_command(Command.RESET_RAM, value, p)
         header, _ = self.receive_response()
-        if header != [Command.RESET_RAM, 0, 0]:
+        if header != [Command.RESET_RAM, 0, 0]: # Si le header n'est pas correct
             raise CommandError(Command.RESET_RAM, "Cannot reset ram")
 
     def write(self, value, location):
@@ -213,10 +215,11 @@ class RAM(RS232):
             :param value: value to write
             :param location: location to write
         """
-        [adr1, adr2] = list(location.to_bytes(2, 'big'))
+        """ Ecrit un seul octet dans la ram """
+        [adr1, adr2] = list(location.to_bytes(2, 'big')) # On convertit notre message en bit
         self.send_command(Command.WRITE_RAM, adr1, adr2, value)
         header, res = self.receive_response()
-        if header != [Command.WRITE_RAM, 0, 0]:
+        if header != [Command.WRITE_RAM, 0, 0]: # Si le header n'est pas correct
             raise CommandError(Command.WRITE_RAM, "Cannot write to single address")
         return res
 
@@ -226,8 +229,8 @@ class RAM(RS232):
 
             :param location: location to read
         """
-        # Split the adress into two bytes
-        [adr1, adr2] = list(location.to_bytes(2, 'big'))
+        """ Lis 1 octet dans la ram """
+        [adr1, adr2] = list(location.to_bytes(2, 'big')) # On convertit l'addresse en bytes
         self.send_command(Command.READ_RAM, adr1, adr2)
         header, res = self.receive_response()
         if header != [Command.READ_RAM, 0, 1]:
@@ -241,8 +244,9 @@ class RAM(RS232):
             :param adr_start: adress of the beginning of the block
             :param block_size: size of the wanted block
         """
+        """ Lis un block de plusieurs octets dans la ram """
         # Split the adress into two bytes
-        [adr1, adr2] = list(adr_start.to_bytes(2, 'big'))
+        [adr1, adr2] = list(adr_start.to_bytes(2, 'big')) # On convertit l'addresse en bytes
         self.send_command(Command.READ_GROUP_RAM, adr1, adr2, block_size)
         header, res = self.receive_response()
         if header  != [Command.READ_GROUP_RAM, 0, block_size]:
@@ -255,11 +259,12 @@ class RAM(RS232):
 
             :param reserve_stack: number of bytes to skip at the end of the ram
         """
+        """ Dump toute la ram dans une liste python """
         adr_ram = 0
         res = []
         log.info("Dumping ram...")
         t = time()
-        while (adr_ram < self.ram_size - reserve_stack):
+        while (adr_ram < self.ram_size - reserve_stack): # On lit par groupe de block_size
             res += self.read_group(adr_ram, block_size)
             adr_ram += block_size
         log.info(f"Ram dumped in {time() - t} seconds")
@@ -272,9 +277,10 @@ class RAM(RS232):
             :param file: dump file to create/overwrite
             :param reserve_stack: number of bytes to skip at the end of the ram
         """
+        """ Dump la ram dans un fichier """
         data = self.dump(reserve_stack, block_size)
         f = open(file, "w+")
-        for i in range(len(data)):
+        for i in range(len(data)): # On écrit chaque ligne en format hex:val (xxxx:xx)
             f.write("{:04x}:".format(i))
             f.write("{:02x}\n".format(data[i]))
         f.close()
