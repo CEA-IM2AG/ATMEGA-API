@@ -57,22 +57,16 @@ class PortError(Exception):
 
 class RS232:
     """ RS232 protocol object """
-    def __init__(self, port=None, timeout=5, quality_test=False,
-        raise_on_busy=True, busy_timeout=5
-):
+    def __init__(self, port=None, timeout=5, quality_test=False):
         """
             Initialize the interface.
 
             :param port: port name (None = Auto)
             :param timeout: timeout in seconds
             :param quality_test: do a quality test ?
-            :param raise_on_busy: throw an exception if busy
-            :param busy_timeout: timeout when busy
         """
         self.timeout = timeout
         self.busy = False # Est-ce que l'appareil est occupé ?
-        self.raise_on_busy = raise_on_busy
-        self.busy_timeout = busy_timeout
         if port is None: # Si aucun port est donné on cherche automatiquement
             self.resolve_com()
         else:
@@ -137,16 +131,6 @@ class RS232:
 
     def send_command(self, *args):
         """ Send a command using RS232 protocol """
-        if self.busy:
-            if self.raise_on_busy:
-                raise CommandError(args[0], "Device is busy")
-            # Début de l'attente
-            loop_start = time()
-            while self.busy and time() - loop_start < self.busy_timeout:
-                sleep(0.1)
-            # L'appareil est t-il toujours occupé?
-            if self.busy:
-                raise CommandError(args[0], "Device is busy")
         # Envoi de la commande
         self.serial.write(bytearray(args))
         log.debug(f"Sended {args}")
@@ -183,6 +167,7 @@ class RS232:
             sleep(0.01) # Le temps de recevoir les commandes
             timeout_counter += 0.01
             if timeout_counter > self.timeout:
+                # Timeout, il y a surement un problème de configuration, on reset l'appareil
                 self.force_reset()
                 raise PortError(f"Header timeout: {self.get_response()}")
         header = self.get_response(3) # Header = 3 premiers bits décrivant le message
@@ -192,12 +177,12 @@ class RS232:
             sleep(0.01)
             timeout_counter += 0.01
             if timeout_counter > self.timeout:
+                # Timeout, il y a surement un problème de configuration, on reset l'appareil
                 self.force_reset()
                 raise PortError(f"Body timeout: {self.get_response()} (Header = {header})")
         body = self.get_response() # Body = contenu du message
         log.debug(f"Received: [{header}] {body}")
         # Libération de l'appareil
-        self.busy = self.serial.in_waiting == 0
         return header, body
 
 
@@ -216,6 +201,20 @@ class RAM(RS232):
         super().__init__(port, timeout, quality_test)
         self.ram_size = ram_size # Support atmega différente ram
 
+    def _lock(fun):
+        """ Lock the device on busy status """
+        def magic(self, *args):
+            if self.busy:
+                raise CommandError(args[0], "Device is busy")
+            log.debug("Locking device")
+            self.busy = True
+            res = fun(self, *args)
+            self.busy = False
+            log.debug("Unlocking device")
+            return res
+        return magic
+
+    @_lock
     def reset(self, value=0x00, increment=False, complement=False):
         """
             Set all ram values to value
@@ -236,6 +235,7 @@ class RAM(RS232):
         if header != [Command.RESET_RAM, 0, 0]: # Si le header n'est pas correct
             raise CommandError(Command.RESET_RAM, "Cannot reset ram")
 
+    @_lock
     def write(self, value, location):
         """
             Write value at emplacement location
@@ -244,6 +244,8 @@ class RAM(RS232):
             :param location: location to write
         """
         """ Ecrit un seul octet dans la ram """
+        if location > self.ram_size:
+            raise CommandError(Command.WRITE_RAM, "Invalid location")
         [adr1, adr2] = list(location.to_bytes(2, 'big')) # On convertit notre message en bit
         self.send_command(Command.WRITE_RAM, adr1, adr2, value)
         header, res = self.receive_response()
@@ -251,6 +253,7 @@ class RAM(RS232):
             raise CommandError(Command.WRITE_RAM, "Cannot write to single address")
         return res
 
+    @_lock
     def read(self, location):
         """
             Read ram at a single location
@@ -258,13 +261,16 @@ class RAM(RS232):
             :param location: location to read
         """
         """ Lis 1 octet dans la ram """
+        if location > self.ram_size:
+            raise CommandError(Command.WRITE_RAM, "Invalid location")
         [adr1, adr2] = list(location.to_bytes(2, 'big')) # On convertit l'addresse en bytes
         self.send_command(Command.READ_RAM, adr1, adr2)
         header, res = self.receive_response()
-        if header != [Command.READ_RAM, 0, 1]:
+        if header != [Command.READ_RAM, 0, 1]: # Si le header n'est pas correct
             raise CommandError(Command.READ_RAM, "Cannot read ram")
         return res[0]
 
+    @_lock
     def read_group(self, adr_start=0, block_size=64):
         """"
             Read a block in the ram
@@ -273,14 +279,17 @@ class RAM(RS232):
             :param block_size: size of the wanted block
         """
         """ Lis un block de plusieurs octets dans la ram """
+        if adr_start + block_size > self.ram_size:
+            raise CommandError(Command.WRITE_RAM, "Invalid location")
         # Split the adress into two bytes
         [adr1, adr2] = list(adr_start.to_bytes(2, 'big')) # On convertit l'addresse en bytes
         self.send_command(Command.READ_GROUP_RAM, adr1, adr2, block_size)
         header, res = self.receive_response()
-        if header  != [Command.READ_GROUP_RAM, 0, block_size]:
+        if header  != [Command.READ_GROUP_RAM, 0, block_size]: # Si le header n'est pas correct
             raise CommandError(Command.READ_GROUP_RAM, "Cannot read group ram")
         return res
 
+    @_lock
     def dump(self, reserve_stack=0, block_size=128):
         """
             Read the whole ram
@@ -308,7 +317,7 @@ class RAM(RS232):
         """ Dump la ram dans un fichier """
         data = self.dump(reserve_stack, block_size)
         f = open(file, "w+")
-        for i in range(len(data)): # On écrit chaque ligne en format hex:val (xxxx:xx)
+        for i in range(len(data)): # On écrit chaque ligne en format addr:val (xxxx:xx)
             f.write("{:04x}:".format(i))
             f.write("{:02x}\n".format(data[i]))
         f.close()
