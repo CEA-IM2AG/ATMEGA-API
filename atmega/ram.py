@@ -57,15 +57,22 @@ class PortError(Exception):
 
 class RS232:
     """ RS232 protocol object """
-    def __init__(self, port=None, timeout=5, quality_test=False):
+    def __init__(self, port=None, timeout=5, quality_test=False,
+        raise_on_busy=True, busy_timeout=5
+):
         """
             Initialize the interface.
 
             :param port: port name (None = Auto)
             :param timeout: timeout in seconds
             :param quality_test: do a quality test ?
+            :param raise_on_busy: throw an exception if busy
+            :param busy_timeout: timeout when busy
         """
         self.timeout = timeout
+        self.busy = False # Est-ce que l'appareil est occupé ?
+        self.raise_on_busy = raise_on_busy
+        self.busy_timeout = busy_timeout
         if port is None: # Si aucun port est donné on cherche automatiquement
             self.resolve_com()
         else:
@@ -130,6 +137,17 @@ class RS232:
 
     def send_command(self, *args):
         """ Send a command using RS232 protocol """
+        if self.busy:
+            if self.raise_on_busy:
+                raise CommandError(args[0], "Device is busy")
+            # Début de l'attente
+            loop_start = time()
+            while self.busy and time() - loop_start < self.busy_timeout:
+                sleep(0.1)
+            # L'appareil est t-il toujours occupé?
+            if self.busy:
+                raise CommandError(args[0], "Device is busy")
+        # Envoi de la commande
         self.serial.write(bytearray(args))
         log.debug(f"Sended {args}")
 
@@ -146,6 +164,12 @@ class RS232:
             res = self.serial.read(length)
         return list(res)
 
+    def force_reset(self):
+        """ Try to reset the device """
+        self.serial.reset_input_buffer()
+        self.serial.reset_output_buffer()
+        self.busy = False
+
     def receive_response(self, length=None):
         """
             Wait for a response using RS232 protocol
@@ -159,6 +183,7 @@ class RS232:
             sleep(0.01) # Le temps de recevoir les commandes
             timeout_counter += 0.01
             if timeout_counter > self.timeout:
+                self.force_reset()
                 raise PortError(f"Header timeout: {self.get_response()}")
         header = self.get_response(3) # Header = 3 premiers bits décrivant le message
         message_len = header[1]*256 + header[2]
@@ -167,9 +192,12 @@ class RS232:
             sleep(0.01)
             timeout_counter += 0.01
             if timeout_counter > self.timeout:
+                self.force_reset()
                 raise PortError(f"Body timeout: {self.get_response()} (Header = {header})")
         body = self.get_response() # Body = contenu du message
         log.debug(f"Received: [{header}] {body}")
+        # Libération de l'appareil
+        self.busy = self.serial.in_waiting == 0
         return header, body
 
 
