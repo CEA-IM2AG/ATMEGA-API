@@ -41,8 +41,9 @@ def list_devices():
             log.info(f"Successfully connected to {prefix}{i}")
             device.append(f"{prefix}{i}")
         except SerialException as e:
-            log.warn(e)
-            log.debug(f"Connection to {prefix}{i} failed. Trying {prefix}{i+1}...")
+            pass
+            #log.warn(e)
+            #log.debug(f"Connection to {prefix}{i} failed. Trying {prefix}{i+1}...")
     return device
 
 
@@ -73,18 +74,19 @@ class RS232:
             try:
                 self.resolve_com(baudrate)
             except:
-                self.serial = None
+                self.serial = Serial()
         else:
             try: # Sinon on essaie le port fourni
                 self.serial = Serial(port, stopbits=2)
-            except SerialException as _:
-                log.warning("Connection to {port} failed. Using resolve_com...")
+            except SerialException as e:
+                log.warn(e)
+                log.warning(f"Connection to {port} failed. Using resolve_com...")
                 self.resolve_com(baudrate)
         if quality_test: # Si besoin on fait un test de qualité
             try:
                 self.quality_test()
             except:
-                self.serial = None
+                self.serial = Serial()
 
     def resolve_com(self, baudrate=None):
         """ Take the first usable USB device as serial """
