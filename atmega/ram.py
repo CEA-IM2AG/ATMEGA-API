@@ -70,7 +70,10 @@ class RS232:
         self.timeout = timeout
         self.busy = False # Est-ce que l'appareil est occupé ?
         if port is None: # Si aucun port est donné on cherche automatiquement
-            self.resolve_com(baudrate)
+            try:
+                self.resolve_com(baudrate)
+            except:
+                self.serial = None
         else:
             try: # Sinon on essaie le port fourni
                 self.serial = Serial(port, stopbits=2)
@@ -78,7 +81,10 @@ class RS232:
                 log.warning("Connection to {port} failed. Using resolve_com...")
                 self.resolve_com(baudrate)
         if quality_test: # Si besoin on fait un test de qualité
-            self.quality_test()
+            try:
+                self.quality_test()
+            except:
+                self.serial = None
 
     def resolve_com(self, baudrate=None):
         """ Take the first usable USB device as serial """
