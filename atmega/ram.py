@@ -2,8 +2,6 @@
     AN IMPLEMENTATION OF THE RAM MEMORY
     :author: Sofiane DJERBI, Aina PEDERSEN, Nour LADHARI, Aymes FEJZA
 """
-import asyncio
-
 import logging
 
 from time import sleep, time
@@ -266,7 +264,7 @@ class RAM(RS232):
         return magic
 
     @_lock
-    async def reset(self, value=0x00, increment=False, complement=False):
+    def reset(self, value=0x00, increment=False, complement=False):
         """
             Set all ram values to value
 
