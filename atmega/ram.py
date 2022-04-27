@@ -13,6 +13,7 @@ from atmega.command import Command
 from atmega.command import CommandError
 
 from sys import platform
+from functools import wraps
 
 
 log = logging.getLogger("ATMEGA RAM")
@@ -36,10 +37,11 @@ def list_devices():
     device = []
     for i in range(256): # On teste tous les ports
         try: # On a trouvé un device
-            serial = Serial(f"{prefix}{i}", stopbits=2)
+            Serial(f"{prefix}{i}", stopbits=2)
             log.info(f"Successfully connected to {prefix}{i}")
             device.append(f"{prefix}{i}")
         except SerialException as e:
+            log.warn(e)
             log.debug(f"Connection to {prefix}{i} failed. Trying {prefix}{i+1}...")
     return device
 
@@ -57,7 +59,7 @@ class PortError(Exception):
 
 class RS232:
     """ RS232 protocol object """
-    def __init__(self, port=None, timeout=5, quality_test=False):
+    def __init__(self, port=None, timeout=5, quality_test=False, baudrate=None):
         """
             Initialize the interface.
 
@@ -68,23 +70,63 @@ class RS232:
         self.timeout = timeout
         self.busy = False # Est-ce que l'appareil est occupé ?
         if port is None: # Si aucun port est donné on cherche automatiquement
-            self.resolve_com()
+            self.resolve_com(baudrate)
         else:
             try: # Sinon on essaie le port fourni
                 self.serial = Serial(port, stopbits=2)
             except SerialException as _:
                 log.warning("Connection to {port} failed. Using resolve_com...")
-                self.resolve_com()
+                self.resolve_com(baudrate)
         if quality_test: # Si besoin on fait un test de qualité
             self.quality_test()
 
-    def resolve_com(self):
-        """ Take the first USB device as serial """
-        """ Utilise le premier port usb reconnu en tant que périphérique """
-        device = list_devices()
-        if device == []: # Si on a rien trouvé
+    def resolve_com(self, baudrate=None):
+        """ Take the first usable USB device as serial """
+        """ Utilise le premier port usb fonctionnel en tant que périphérique """
+        devices = list_devices()
+        if devices == []: # Si on a rien trouvé
             raise PortError("FTDI port not found.")
-        self.serial = Serial(device[0], stopbits=2)
+        for port in devices:
+            if baudrate is not None:
+                self.serial = Serial(port, stopbits=2, baudrate=baudrate)
+            elif not self.init_baudrate(port):
+                continue
+            # Vérification de la connection
+            self.send_command(Command.QUALITY_TEST, 0x55, 0x00)
+            sleep(0.2) # Attente de réponse
+            ret = list(self.serial.read(self.serial.in_waiting))
+            if ret == [Command.QUALITY_TEST, 0x00, 0x01, 0x55]:
+                log.info(f"Found port at {port}")
+                return
+        raise PortError("FTDI No usable port.")
+
+    def init_baudrate(self, port):
+        """
+            Initialize a device by sending commands till the reception
+            of a correct answer.
+            :param port: the port to initialise
+        """
+        """
+            Rénitialisation du baudrate à 9600 par force.
+        """
+        log.info("Baudrate initialisation")
+        tries = 0
+        self.serial = Serial(port, stopbits=2, baudrate=9600)
+        # Envoie de commandes jusqu'à reception du bon message
+        query = [Command.READ_RAM, 0x00, 0x00, Command.QUALITY_TEST, 0x00, 0x00]*2
+        while tries <= 10:
+            tries += 1
+            # Envoie de commandes tests
+            self.send_command(*query)
+            sleep(0.1)
+            ret = list(self.serial.read(self.serial.in_waiting))
+            log.info(f"Removed {ret} from buffer")
+            # Vérification de la synchronisation
+            if ret[-4:] == [Command.QUALITY_TEST, 0x00, 0x01, 0x00]:
+                log.info(f"Baudrate initialisation done with port {port}")
+                return True
+        log.info(f"Failed to initialise baudrate with port {port} ({tries} trie(s))")
+        return False
 
     def quality_test(self):
         """ i2c Quality communication test """
@@ -119,6 +161,7 @@ class RS232:
         try:
             head, body = self.receive_response()
         except PortError as e:
+            log.warn(e)
             raise CommandError(Command.CHANGE_BAUDRATE, "Timeout while changing baudrate")
         if head != [Command.CHANGE_BAUDRATE, 0, 1] or body != [0xAA]:
             raise CommandError(Command.CHANGE_BAUDRATE, "Error while changing baudrate")
@@ -154,7 +197,7 @@ class RS232:
         self.serial.reset_output_buffer()
         self.busy = False
 
-    def receive_response(self, length=None):
+    def receive_response(self):
         """
             Wait for a response using RS232 protocol
 
@@ -189,7 +232,7 @@ class RS232:
 class RAM(RS232):
     """ ATMEGA RAM implementation using RS232 protocol """
     def __init__(self, port=None, timeout=5, quality_test=False,
-                 ram_size=2**14):
+                 baudrate=None, ram_size=2**14):
         """
             Initialize the RS232 object
 
@@ -198,17 +241,23 @@ class RAM(RS232):
             :param quality_test: do a quality test ?
             :param ram_size: size of the ram
         """
-        super().__init__(port, timeout, quality_test)
+        super().__init__(port, timeout, quality_test, baudrate)
         self.ram_size = ram_size # Support atmega différente ram
 
+    @staticmethod
     def _lock(fun):
         """ Lock the device on busy status """
-        def magic(self, *args):
+        @wraps(fun)
+        def magic(self, *args, **kwargs):
             if self.busy:
                 raise CommandError(args[0], "Device is busy")
             log.debug("Locking device")
             self.busy = True
-            res = fun(self, *args)
+            try:
+                res = fun(self, *args, **kwargs)
+            except Exception as e:
+                self.busy = False
+                raise e
             self.busy = False
             log.debug("Unlocking device")
             return res
@@ -289,7 +338,6 @@ class RAM(RS232):
             raise CommandError(Command.READ_GROUP_RAM, "Cannot read group ram")
         return res
 
-    @_lock
     def dump(self, reserve_stack=0, block_size=128):
         """
             Read the whole ram
@@ -301,11 +349,11 @@ class RAM(RS232):
         res = []
         log.info("Dumping ram...")
         t = time()
-        while (adr_ram < self.ram_size - reserve_stack): # On lit par groupe de block_size
+        while (adr_ram < self.ram_size): # On lit par groupe de block_size
             res += self.read_group(adr_ram, block_size)
             adr_ram += block_size
         log.info(f"Ram dumped in {time() - t} seconds")
-        return res
+        return res[:-(reserve_stack+1)] # suppression des reserve_stack octets
 
     def dump_to_file(self, file, reserve_stack=0, block_size=64):
         """
