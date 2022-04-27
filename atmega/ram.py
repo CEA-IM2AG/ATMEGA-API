@@ -250,7 +250,6 @@ class RAM(RS232):
         super().__init__(port, timeout, quality_test, baudrate)
         self.ram_size = ram_size # Support atmega différente ram
 
-    @staticmethod
     def _lock(fun):
         """ Lock the device on busy status """
         @wraps(fun)
