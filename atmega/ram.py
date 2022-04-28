@@ -37,9 +37,10 @@ def list_devices():
     device = []
     for i in range(256): # On teste tous les ports
         try: # On a trouvé un device
-            Serial(f"{prefix}{i}", stopbits=2)
+            serial = Serial(f"{prefix}{i}", stopbits=2)
             log.info(f"Successfully connected to {prefix}{i}")
             device.append(f"{prefix}{i}")
+            serial.close()
         except SerialException as e:
             pass
             #log.warn(e)
@@ -60,7 +61,7 @@ class PortError(Exception):
 
 class RS232:
     """ RS232 protocol object """
-    def __init__(self, port=None, timeout=5, quality_test=False, baudrate=None):
+    def __init__(self, port=None, timeout=5, quality_test=False, baudrate=None, ):
         """
             Initialize the interface.
 
@@ -71,17 +72,9 @@ class RS232:
         self.timeout = timeout
         self.busy = False # Est-ce que l'appareil est occupé ?
         if port is None: # Si aucun port est donné on cherche automatiquement
-            try:
-                self.resolve_com(baudrate)
-            except:
-                self.serial = Serial()
+            self.resolve_com(baudrate)
         else:
-            try: # Sinon on essaie le port fourni
-                self.serial = Serial(port, stopbits=2)
-            except SerialException as e:
-                log.warn(e)
-                log.warning(f"Connection to {port} failed. Using resolve_com...")
-                self.resolve_com(baudrate)
+            self.serial = Serial(port, stopbits=2)
         if quality_test: # Si besoin on fait un test de qualité
             try:
                 self.quality_test()
@@ -106,6 +99,7 @@ class RS232:
             if ret == [Command.QUALITY_TEST, 0x00, 0x01, 0x55]:
                 log.info(f"Found port at {port}")
                 return
+            self.serial.close()
         raise PortError("FTDI No usable port.")
 
     def init_baudrate(self, port):
