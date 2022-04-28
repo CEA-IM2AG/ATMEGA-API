@@ -76,10 +76,7 @@ class RS232:
         else:
             self.serial = Serial(port, stopbits=2)
         if quality_test: # Si besoin on fait un test de qualité
-            try:
-                self.quality_test()
-            except:
-                self.serial = Serial()
+            self.quality_test()
 
     def resolve_com(self, baudrate=None):
         """ Take the first usable USB device as serial """
