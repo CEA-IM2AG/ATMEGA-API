@@ -2,6 +2,7 @@
     AN IMPLEMENTATION OF THE RAM MEMORY
     :author: Sofiane DJERBI, Aina PEDERSEN, Nour LADHARI, Aymes FEJZA
 """
+import math
 import logging
 
 from time import sleep, time
@@ -336,7 +337,7 @@ class RAM(RS232):
             raise CommandError(Command.READ_GROUP_RAM, "Cannot read group ram")
         return res
 
-    def dump(self, reserve_stack=0, block_size=128):
+    def dump(self, reserve_stack=0, block_size=128, bar=None):
         """
             Read the whole ram
 
@@ -350,10 +351,13 @@ class RAM(RS232):
         while (adr_ram < self.ram_size): # On lit par groupe de block_size
             res += self.read_group(adr_ram, block_size)
             adr_ram += block_size
+            if bar is not None:
+                val = math.floor((bar.maximum() - bar.minimum())*adr_ram/self.ram_size) + bar.minimum()
+                bar.setValue(val)
         log.info(f"Ram dumped in {time() - t} seconds")
         return res[:-(reserve_stack+1)] # suppression des reserve_stack octets
 
-    def dump_to_file(self, file, reserve_stack=0, block_size=64):
+    def dump_to_file(self, file, reserve_stack=0, block_size=64, bar=None):
         """
             Read the whole ram and save it in a file
 
@@ -361,7 +365,7 @@ class RAM(RS232):
             :param reserve_stack: number of bytes to skip at the end of the ram
         """
         """ Dump la ram dans un fichier """
-        data = self.dump(reserve_stack, block_size)
+        data = self.dump(reserve_stack, block_size, bar)
         f = open(file, "w+")
         for i in range(len(data)): # On écrit chaque ligne en format addr:val (xxxx:xx)
             f.write("{:04x}:".format(i))
