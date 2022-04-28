@@ -1,7 +1,7 @@
 # ATMEGA API
 Provides an API for ATMEGA microcontroller through an FTDI USB device.  
 **Installation:** `pip install atmega`  
-**Note:** On linux the user should be in the group `dialout`  
+**Note:** On linux the user should be in the group `dialout` and `uucp` 
 
 # Local installation
 
